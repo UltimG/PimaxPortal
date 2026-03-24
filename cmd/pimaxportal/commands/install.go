@@ -43,13 +43,13 @@ func (i *InstallCommand) Run(ctx context.Context, send func(ProgressMsg)) error 
 		send(ProgressMsg{Text: fmt.Sprintf("WARNING: Device is '%s', not fujilite (Pimax Portal Retro).", info.Variant)})
 	}
 
-	send(ProgressMsg{Text: "Pushing module to device...", Percent: -1})
+	send(ProgressMsg{Text: "Pushing module to device", Percent: -1})
 	if err := adb.Push(zipPath, "/sdcard/pimax-gpu-drivers.zip"); err != nil {
 		return fmt.Errorf("push: %w", err)
 	}
 
 	// Root access check with interactive polling
-	send(ProgressMsg{Text: "Checking root access...", Percent: -1})
+	send(ProgressMsg{Text: "Checking root access", Percent: -1})
 	hasRoot, err := adb.CheckRoot()
 	if err != nil || !hasRoot {
 		// Signal TUI to show root access overlay
@@ -76,7 +76,7 @@ func (i *InstallCommand) Run(ctx context.Context, send func(ProgressMsg)) error 
 	}
 	send(ProgressMsg{Text: "Root access confirmed.", Percent: -1})
 
-	send(ProgressMsg{Text: "Installing module via Magisk...", Percent: -1})
+	send(ProgressMsg{Text: "Installing module via Magisk", Percent: -1})
 	out, err := adb.ShellSu(`magisk --install-module /sdcard/pimax-gpu-drivers.zip`)
 	if err != nil {
 		return fmt.Errorf("magisk install failed: %s\nCheck that Magisk is installed and root is granted.", out)

@@ -15,7 +15,7 @@ func main() {
 	}
 
 	m := initialModel()
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	m.program = p
 
 	if _, err := p.Run(); err != nil {

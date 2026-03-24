@@ -188,11 +188,11 @@ func GetDeviceInfo() (DeviceInfo, error) {
 		info.Model = model
 	}
 
-	if variant, err := GetProp("ro.product.device"); err == nil {
+	if variant, err := GetProp("ro.pmx.proj.sub.name"); err == nil {
 		info.Variant = variant
 	}
 
-	if panel, err := GetProp("ro.boot.hwc"); err == nil {
+	if panel, err := GetProp("ro.boot.lcd_panel_type"); err == nil {
 		info.PanelType = panel
 	}
 

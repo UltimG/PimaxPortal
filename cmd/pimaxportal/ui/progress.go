@@ -1,10 +1,6 @@
 package ui
 
-import (
-	"strings"
-
-	"github.com/charmbracelet/lipgloss"
-)
+import "strings"
 
 const maxLogLines = 15
 
@@ -25,7 +21,7 @@ func (p *ProgressLog) Clear() {
 
 func (p *ProgressLog) Render() string {
 	if len(p.Lines) == 0 {
-		return lipgloss.NewStyle().Foreground(ColorDim).Render("Press Enter to start")
+		return ""
 	}
 	return strings.Join(p.Lines, "\n")
 }

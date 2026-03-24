@@ -13,7 +13,6 @@ const (
 	lpGeometryMagic  = 0x616c4467
 	lpMetadataMagic  = 0x414c5030
 	lpGeometryOffset = 4096
-	lpMetadataOffset = 8192 // lpGeometryOffset + 4096
 	lpSectorSize     = 512
 
 	lpExtentTypeLinear = 0
@@ -67,6 +66,38 @@ type lpExtentEntry struct {
 	TargetType   uint32
 	TargetData   uint64
 	TargetSource uint32
+}
+
+// copyWithCancel copies from src to dst in chunks, checking for context
+// cancellation between chunks. Calls onProgress with the number of bytes
+// copied after each chunk.
+func copyWithCancel(ctx context.Context, dst io.Writer, src io.Reader, onProgress func(int64)) (int64, error) {
+	buf := make([]byte, 1024*1024) // 1MB chunks
+	var total int64
+	for {
+		select {
+		case <-ctx.Done():
+			return total, ctx.Err()
+		default:
+		}
+		n, err := src.Read(buf)
+		if n > 0 {
+			nw, wErr := dst.Write(buf[:n])
+			total += int64(nw)
+			if onProgress != nil {
+				onProgress(int64(nw))
+			}
+			if wErr != nil {
+				return total, wErr
+			}
+		}
+		if err == io.EOF {
+			return total, nil
+		}
+		if err != nil {
+			return total, err
+		}
+	}
 }
 
 // parseLPGeometry parses an LP geometry header from the given byte slice.
@@ -176,7 +207,7 @@ func nullTermString(b []byte) string {
 // cacheDir/extracted/vendor_a.img. After successful extraction, the super
 // image and split 7z files are removed to reclaim disk space.
 func ExtractVendorPartition(ctx context.Context, cacheDir string, send func(ProgressMsg)) error {
-	superPath := filepath.Join(cacheDir, "firmware", "lun0_super.bin")
+	superPath := filepath.Join(cacheDir, "extracted", "flash", "lun0_super.bin")
 	send(ProgressMsg{Text: "Opening super partition image", Percent: 0.0})
 
 	f, err := os.Open(superPath)
@@ -196,10 +227,17 @@ func ExtractVendorPartition(ctx context.Context, cacheDir string, send func(Prog
 		return fmt.Errorf("parsing geometry: %w", err)
 	}
 
-	// Read LP metadata at offset 8192.
+	// LP layout: primary geometry at 4096, backup geometry at 4096+4096,
+	// then primary metadata starts after both geometry blocks.
+	// metadata_offset = geometry_offset + (2 * 4096-aligned geometry size)
+	// The geometry block is always 4096 bytes (padded), so metadata = 4096 + 4096 + 4096 = 12288.
+	// But more precisely: metadata_offset = lpGeometryOffset + 2*align(geo.StructSize, 4096)
+	geoBlockSize := int64(4096) // geometry blocks are 4KB aligned
+	metadataOffset := int64(lpGeometryOffset) + 2*geoBlockSize
+
 	send(ProgressMsg{Text: "Reading LP metadata", Percent: 0.10})
 	metaBuf := make([]byte, geo.MetadataMaxSize)
-	if _, err := f.ReadAt(metaBuf, lpMetadataOffset); err != nil {
+	if _, err := f.ReadAt(metaBuf, metadataOffset); err != nil {
 		return fmt.Errorf("reading metadata: %w", err)
 	}
 	hdr, err := parseLPMetadataHeader(metaBuf)
@@ -240,13 +278,18 @@ func ExtractVendorPartition(ctx context.Context, cacheDir string, send func(Prog
 	// Copy each LINEAR extent to the output file.
 	send(ProgressMsg{Text: "Extracting vendor_a partition", Percent: 0.20})
 	totalExtents := vendorPart.NumExtents
+	var totalBytes int64
 	for i := uint32(0); i < totalExtents; i++ {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
+		extIdx := vendorPart.FirstExtent + i
+		off := hdr.Extents.Offset + extIdx*hdr.Extents.EntrySize
+		ext, _ := parseLPExtent(metaBuf[off:])
+		if ext.TargetType == lpExtentTypeLinear {
+			totalBytes += int64(ext.NumSectors) * lpSectorSize
 		}
+	}
 
+	var written int64
+	for i := uint32(0); i < totalExtents; i++ {
 		extIdx := vendorPart.FirstExtent + i
 		off := hdr.Extents.Offset + extIdx*hdr.Extents.EntrySize
 		ext, err := parseLPExtent(metaBuf[off:])
@@ -262,15 +305,20 @@ func ExtractVendorPartition(ctx context.Context, cacheDir string, send func(Prog
 		length := int64(ext.NumSectors) * lpSectorSize
 
 		sr := io.NewSectionReader(f, srcOffset, length)
-		if _, err := io.Copy(out, sr); err != nil {
+		copied, err := copyWithCancel(ctx, out, sr, func(n int64) {
+			written += n
+			if totalBytes > 0 {
+				pct := 0.20 + 0.70*float64(written)/float64(totalBytes)
+				send(ProgressMsg{
+					Text:    "Extracting vendor_a partition",
+					Percent: pct,
+				})
+			}
+		})
+		if err != nil {
 			return fmt.Errorf("copying extent %d: %w", i, err)
 		}
-
-		pct := 0.20 + 0.70*float64(i+1)/float64(totalExtents)
-		send(ProgressMsg{
-			Text:    fmt.Sprintf("Extracting vendor_a extent %d/%d", i+1, totalExtents),
-			Percent: pct,
-		})
+		_ = copied
 	}
 
 	// Sync and close the output file before cleanup.

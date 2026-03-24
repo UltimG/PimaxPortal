@@ -1,4 +1,3 @@
-originals/
 build/
 *.so
 *.img
@@ -7,3 +6,4 @@ build/
 *.7z
 *.apk
 *.jar
+.DS_Store

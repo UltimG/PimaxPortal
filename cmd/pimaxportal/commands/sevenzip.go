@@ -3,7 +3,6 @@ package commands
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,7 +18,7 @@ func ExtractSuperImage(ctx context.Context, cacheDir string, send func(ProgressM
 	if err := os.MkdirAll(destDir, 0755); err != nil {
 		return err
 	}
-	send(ProgressMsg{Text: "Opening firmware archive...", Percent: -1})
+	send(ProgressMsg{Text: "Opening firmware archive", Percent: -1})
 	r, err := sevenzip.OpenReader(archivePath)
 	if err != nil {
 		return fmt.Errorf("open 7z archive: %w", err)
@@ -35,7 +34,7 @@ func ExtractSuperImage(ctx context.Context, cacheDir string, send func(ProgressM
 		if !strings.HasSuffix(f.Name, superImagePath) && f.Name != superImagePath {
 			continue
 		}
-		send(ProgressMsg{Text: fmt.Sprintf("Extracting %s (%.1f GB)...", f.Name, float64(f.UncompressedSize)/(1024*1024*1024)), Percent: -1})
+		send(ProgressMsg{Text: fmt.Sprintf("Extracting %s (%.1f GB)", f.Name, float64(f.UncompressedSize)/(1024*1024*1024)), Percent: -1})
 		destPath := filepath.Join(destDir, superImagePath)
 		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 			return err
@@ -49,13 +48,24 @@ func ExtractSuperImage(ctx context.Context, cacheDir string, send func(ProgressM
 			rc.Close()
 			return err
 		}
-		_, err = io.Copy(out, rc)
+		totalSize := int64(f.UncompressedSize)
+		var extracted int64
+		_, err = copyWithCancel(ctx, out, rc, func(n int64) {
+			extracted += n
+			if totalSize > 0 {
+				send(ProgressMsg{
+					Text:    fmt.Sprintf("Extracting firmware (%.1f GB)", float64(totalSize)/(1024*1024*1024)),
+					Percent: float64(extracted) / float64(totalSize),
+				})
+			}
+		})
 		rc.Close()
 		out.Close()
 		if err != nil {
+			os.Remove(destPath)
 			return fmt.Errorf("extract %s: %w", f.Name, err)
 		}
-		send(ProgressMsg{Text: "Super partition extracted.", Percent: 1.0})
+		send(ProgressMsg{Text: "Super partition extracted", Percent: 1.0})
 		return nil
 	}
 	return fmt.Errorf("%s not found in archive", superImagePath)
