@@ -1,0 +1,9 @@
+originals/
+build/
+*.so
+*.img
+*.zip
+*.tar
+*.7z
+*.apk
+*.jar
