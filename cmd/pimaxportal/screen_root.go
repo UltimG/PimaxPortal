@@ -294,6 +294,16 @@ func (s *RootScreen) startPreparePipeline() tea.Cmd {
 
 			rootCmd := commands.RootCommand{}
 
+			// Verify firmware matches our boot.img before proceeding
+			send(commands.ProgressMsg{Text: "Checking firmware version", Percent: -1})
+			if err := rootCmd.CheckFirmware(); err != nil {
+				if p != nil {
+					p.Send(rootPipelineDoneMsg{err: err})
+				}
+				return
+			}
+			send(commands.ProgressMsg{Text: "Firmware version verified", Percent: 1.0})
+
 			if err := rootCmd.PrepareMagisk(ctx, cacheDir, send); err != nil {
 				if p != nil {
 					p.Send(rootPipelineDoneMsg{err: err})

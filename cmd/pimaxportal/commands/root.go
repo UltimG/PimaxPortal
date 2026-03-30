@@ -17,6 +17,10 @@ const (
 	bootImgURL    = "https://github.com/UltimG/PimaxPortal/raw/main/assets/firmware/boot.img"
 	bootImgName   = "boot.img"
 	magiskApkName = "Magisk.apk"
+
+	// Expected firmware build fingerprint for the boot.img we ship.
+	// Flashing a mismatched boot.img breaks WiFi and controllers.
+	expectedFingerprint = "robot09221054"
 )
 
 // RootCommand handles Magisk download/install and boot.img push/pull for the
@@ -99,6 +103,23 @@ func latestMagiskAPKURL(ctx context.Context) (string, error) {
 	}
 
 	return "", fmt.Errorf("no .apk asset found in latest Magisk release")
+}
+
+// CheckFirmware verifies the device firmware matches the boot.img we ship.
+// Returns an error if the firmware is incompatible.
+func (r RootCommand) CheckFirmware() error {
+	fp, err := adb.GetProp("ro.build.fingerprint")
+	if err != nil {
+		return fmt.Errorf("cannot read device fingerprint: %w", err)
+	}
+	if !strings.Contains(fp, expectedFingerprint) {
+		return fmt.Errorf(
+			"firmware mismatch — device has %s, expected build %s.\n"+
+				"Flashing our boot.img on different firmware will break WiFi and controllers.\n"+
+				"Flash stock firmware first (see EDL Recovery Guide), then retry",
+			fp, expectedFingerprint)
+	}
+	return nil
 }
 
 // PushBootImage downloads the stock boot.img (if not cached) and pushes it to
