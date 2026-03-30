@@ -1,0 +1,2 @@
+assets/firmware/boot.img filter=lfs diff=lfs merge=lfs -text
+docs/img/portal.gif filter=lfs diff=lfs merge=lfs -text

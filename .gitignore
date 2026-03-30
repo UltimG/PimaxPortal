@@ -1,6 +1,7 @@
 build/
 *.so
 *.img
+!assets/firmware/boot.img
 *.zip
 *.tar
 *.7z

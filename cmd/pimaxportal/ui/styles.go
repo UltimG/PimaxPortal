@@ -25,4 +25,14 @@ var (
 	FrameStyle         = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(ColorBorder).Padding(1, 3)
 	SeparatorStyle     = lipgloss.NewStyle().Foreground(ColorBorder)
 	FooterStyle        = lipgloss.NewStyle().Foreground(ColorDim)
+
+	// Sidebar styles
+	SidebarWidth = 22
+
+	SidebarStyle       = lipgloss.NewStyle().Width(SidebarWidth).Padding(1, 1)
+	SidebarActiveStyle = lipgloss.NewStyle().Foreground(ColorWhite).Bold(true)
+	SidebarItemStyle   = lipgloss.NewStyle().Foreground(ColorDim)
+	SidebarCursorStyle = lipgloss.NewStyle().Foreground(ColorWhite).Bold(true)
+	SidebarHeaderStyle = lipgloss.NewStyle().Foreground(ColorWhite).Bold(true).MarginTop(1)
+	TreeConnectorStyle = lipgloss.NewStyle().Foreground(ColorDim)
 )

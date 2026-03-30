@@ -4,19 +4,22 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/UltimG/PimaxPortal/cmd/pimaxportal/commands"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 func main() {
-	if err := commands.CheckPreflight(); err != nil {
-		fmt.Fprintf(os.Stderr, "\n%s\n\n", err)
-		os.Exit(1)
-	}
-
 	m := initialModel()
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
-	m.program = p
+
+	// Pass program reference to screens that need it for goroutine communication
+	for _, s := range m.screens {
+		switch screen := s.(type) {
+		case *GPUScreen:
+			screen.SetProgram(p)
+		case *RootScreen:
+			screen.SetProgram(p)
+		}
+	}
 
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)

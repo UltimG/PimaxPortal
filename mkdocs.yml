@@ -1,0 +1,27 @@
+site_name: Pimax Portal Modding
+site_description: GPU driver upgrade and recovery tools for the Pimax Portal Retro
+site_url: https://ultimg.github.io/PimaxPortal/
+repo_url: https://github.com/UltimG/PimaxPortal
+repo_name: UltimG/PimaxPortal
+
+theme:
+  name: shadcn
+  custom_dir: docs/overrides
+  icon: img/pi_logo.svg
+  favicon: img/pi_logo.svg
+
+nav:
+  - Home: index.md
+  - Guides:
+    - TUI Tool (Automated): automated-install.md
+    - Rooting (Manual): rooting-guide.md
+    - GPU Drivers (Manual): manual-module-guide.md
+    - EDL Recovery: edl-recovery-guide.md
+  - Dependencies: dependencies.md
+
+markdown_extensions:
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.highlight
