@@ -26,6 +26,12 @@ var (
 	SeparatorStyle     = lipgloss.NewStyle().Foreground(ColorBorder)
 	FooterStyle        = lipgloss.NewStyle().Foreground(ColorDim)
 
+	// Content frame
+	ContentFrameStyle = lipgloss.NewStyle().
+				Border(lipgloss.ThickBorder()).
+				BorderForeground(ColorBorder).
+				Padding(1, 2)
+
 	// Sidebar styles
 	SidebarWidth = 22
 

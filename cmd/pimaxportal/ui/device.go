@@ -7,14 +7,12 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-const tableWidth = 46
-
 var (
 	rowEvenBg = lipgloss.Color("#1a1a1a")
 	rowOddBg  = lipgloss.Color("#252525")
 )
 
-func RenderDeviceInfo(info adb.DeviceInfo) string {
+func RenderDeviceInfo(info adb.DeviceInfo, width int) string {
 	if !info.Connected {
 		status := " " + DeviceDisconnected.Render("● Disconnected")
 		msg := "No device connected"
@@ -41,7 +39,7 @@ func RenderDeviceInfo(info adb.DeviceInfo) string {
 			bg = rowOddBg
 		}
 		label := lipgloss.NewStyle().Foreground(ColorDim).Background(bg).Width(10).PaddingLeft(1).PaddingRight(1).Render(row.label)
-		value := lipgloss.NewStyle().Foreground(ColorWhite).Background(bg).Width(tableWidth - 10).PaddingLeft(1).PaddingRight(1).Render(row.value)
+		value := lipgloss.NewStyle().Foreground(ColorWhite).Background(bg).Width(width - 10).PaddingLeft(1).PaddingRight(1).Render(row.value)
 		rendered = append(rendered, label+value)
 	}
 

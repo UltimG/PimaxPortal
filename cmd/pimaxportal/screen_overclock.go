@@ -370,7 +370,7 @@ func (s *OCScreen) View(width, height int) string {
 	b.WriteString("\n\n")
 
 	// 2. Device info (left-aligned)
-	deviceInfo := ui.RenderDeviceInfo(s.device)
+	deviceInfo := ui.RenderDeviceInfo(s.device, w)
 	b.WriteString(deviceInfo)
 	b.WriteString("\n\n")
 
@@ -419,6 +419,8 @@ func (s *OCScreen) View(width, height int) string {
 // renderPresetSelector renders the tree-style preset list.
 func (s *OCScreen) renderPresetSelector() string {
 	var b strings.Builder
+	b.WriteString(ui.TitleStyle.Render("Frequencies"))
+	b.WriteString("\n")
 	presets := commands.Presets
 	for i, p := range presets {
 		// Tree connector
@@ -504,7 +506,7 @@ func (s *OCScreen) renderErrorPopup() string {
 	wrapped := wordWrap(s.errorMsg, 36)
 	body := lipgloss.PlaceHorizontal(36, lipgloss.Center, wrapped)
 	popup := ui.BoxStyle.Render("\n" + body + "\n")
-	return lipgloss.PlaceHorizontal(contentWidth, lipgloss.Center, popup)
+	return lipgloss.PlaceHorizontal(innerWidth(), lipgloss.Center, popup)
 }
 
 // Compile-time check that OCScreen implements Screen.

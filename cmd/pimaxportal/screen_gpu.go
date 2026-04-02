@@ -367,7 +367,7 @@ func (s *GPUScreen) View(width, height int) string {
 	b.WriteString("\n\n")
 
 	// 2. Device info (left-aligned)
-	deviceInfo := ui.RenderDeviceInfo(s.device)
+	deviceInfo := ui.RenderDeviceInfo(s.device, w)
 	b.WriteString(deviceInfo)
 	b.WriteString("\n\n")
 
@@ -458,7 +458,7 @@ func (s *GPUScreen) renderErrorPopup() string {
 	wrapped := wordWrap(s.errorMsg, 36)
 	body := lipgloss.PlaceHorizontal(36, lipgloss.Center, wrapped)
 	popup := ui.BoxStyle.Render("\n" + body + "\n")
-	return lipgloss.PlaceHorizontal(contentWidth, lipgloss.Center, popup)
+	return lipgloss.PlaceHorizontal(innerWidth(), lipgloss.Center, popup)
 }
 
 func (s *GPUScreen) renderRootWaitOverlay() string {

@@ -18,6 +18,8 @@ func main() {
 			screen.SetProgram(p)
 		case *RootScreen:
 			screen.SetProgram(p)
+		case *OCScreen:
+			screen.SetProgram(p)
 		}
 	}
 

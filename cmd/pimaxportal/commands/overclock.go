@@ -478,22 +478,21 @@ func RunOverclock(ctx context.Context, preset OCPreset, send func(ProgressMsg)) 
 	return nil
 }
 
-// RestoreStock flashes the backup boot image back to boot_a.
+// RestoreStock reads the current boot partition, patches it back to stock
+// 855 MHz, and flashes it.
 func RestoreStock(ctx context.Context, send func(ProgressMsg)) error {
-	send(ProgressMsg{Text: "Checking for boot backup...", Percent: 0})
+	stockPreset := Presets[0] // 855 MHz (Stock)
 
-	out, err := adb.ShellSu("ls /sdcard/boot_backup.img")
-	if err != nil || !strings.Contains(out, "boot_backup.img") {
-		return fmt.Errorf("no boot backup found at /sdcard/boot_backup.img")
-	}
-
-	send(ProgressMsg{Text: "Restoring stock boot image...", Percent: 0.3})
-
-	_, err = adb.ShellSu(fmt.Sprintf("dd if=/sdcard/boot_backup.img of=%s", bootPartitionPath()))
+	send(ProgressMsg{Text: "Reading current GPU frequency", Percent: 0})
+	currentFreq, err := ReadCurrentGPUFreq()
 	if err != nil {
-		return fmt.Errorf("flashing stock boot: %w", err)
+		return fmt.Errorf("reading GPU freq: %w", err)
+	}
+	if currentFreq == stockPreset.FreqHz {
+		send(ProgressMsg{Text: "GPU already at stock 855 MHz", Percent: 1.0})
+		return nil
 	}
 
-	send(ProgressMsg{Text: "Stock boot restored — reboot to apply", Percent: 1.0})
-	return nil
+	// Use the same pipeline as overclock: pull, patch to stock, push, flash
+	return RunOverclock(ctx, stockPreset, send)
 }

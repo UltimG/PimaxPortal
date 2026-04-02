@@ -29,11 +29,13 @@ func initialModel() *model {
 		{Key: "", Label: "Tools", IsHeader: true},
 		{Key: "root", Label: "Rooting"},
 		{Key: "gpu", Label: "GPU Drivers"},
+		{Key: "overclock", Label: "GPU Overclock"},
 	}
 
 	screens := map[string]Screen{
-		"root": NewRootScreen(),
-		"gpu":  NewGPUScreen(),
+		"root":      NewRootScreen(),
+		"gpu":       NewGPUScreen(),
+		"overclock": NewOCScreen(),
 	}
 
 	sb := NewSidebar(entries)
@@ -132,24 +134,27 @@ func (m *model) View() string {
 	// Render sidebar
 	sidebarView := m.sidebar.View()
 
-	// Calculate content area dimensions
-	contentW := m.width - ui.SidebarWidth - 4
-	if contentW < 20 {
-		contentW = 20
+	// Frame chrome: border (1+1) + padding (2+2) = 6 horizontal, 4 vertical
+	frameChrome := ui.ContentFrameStyle.GetHorizontalFrameSize()
+	frameVChrome := ui.ContentFrameStyle.GetVerticalFrameSize()
+	innerW := contentWidth - frameChrome
+	if innerW < 20 {
+		innerW = 20
 	}
-	contentH := m.height - 4
-	if contentH < 10 {
-		contentH = 10
+	innerH := m.height - frameVChrome - 2 // 2 for footer
+	if innerH < 10 {
+		innerH = 10
 	}
 
-	// Render active screen
+	// Render active screen inside a bordered frame
 	var screenView string
 	if s, ok := m.screens[m.activeScreen]; ok {
-		screenView = s.View(contentW, contentH)
+		screenView = s.View(innerW, innerH)
 	}
+	framedContent := ui.ContentFrameStyle.Width(contentWidth).Height(innerH).Render(screenView)
 
 	// Join sidebar and content horizontally
-	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebarView, screenView)
+	main := lipgloss.JoinHorizontal(lipgloss.Top, sidebarView, framedContent)
 
 	// Footer
 	var footer string
@@ -172,11 +177,16 @@ func (m *model) View() string {
 
 // ---- Shared helpers used by screens ----
 
-const contentWidth = 46
+const contentWidth = 50
 
-// center places text horizontally centered within contentWidth.
+// innerWidth returns the usable width inside the content frame.
+func innerWidth() int {
+	return contentWidth - ui.ContentFrameStyle.GetHorizontalFrameSize()
+}
+
+// center places text horizontally centered within the inner width.
 func center(s string) string {
-	return lipgloss.PlaceHorizontal(contentWidth, lipgloss.Center, s)
+	return lipgloss.PlaceHorizontal(innerWidth(), lipgloss.Center, s)
 }
 
 // renderProgressBar draws a text-based progress bar.
