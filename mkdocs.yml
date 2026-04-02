@@ -16,6 +16,7 @@ nav:
     - TUI Tool (Automated): automated-install.md
     - Rooting (Manual): rooting-guide.md
     - GPU Drivers (Manual): manual-module-guide.md
+    - GPU Overclock (KonaBess): gpu-overclock-guide.md
     - EDL Recovery: edl-recovery-guide.md
   - Dependencies: dependencies.md
 
