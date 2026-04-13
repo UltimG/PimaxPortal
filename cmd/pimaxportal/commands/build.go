@@ -6,14 +6,7 @@ import (
 	"path/filepath"
 )
 
-func init() {
-	Register(&BuildCommand{})
-}
-
 type BuildCommand struct{}
-
-func (b *BuildCommand) Name() string        { return "build" }
-func (b *BuildCommand) Description() string { return "Build GPU Driver Module" }
 
 func (b *BuildCommand) Run(ctx context.Context, send func(ProgressMsg)) error {
 	cacheDir, err := CacheDir()

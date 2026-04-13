@@ -27,24 +27,22 @@ type model struct {
 func initialModel() *model {
 	entries := []SidebarEntry{
 		{Key: "", Label: "Tools", IsHeader: true},
-		{Key: "root", Label: "Rooting"},
 		{Key: "gpu", Label: "GPU Drivers"},
 		{Key: "overclock", Label: "GPU Overclock"},
 	}
 
 	screens := map[string]Screen{
-		"root":      NewRootScreen(),
 		"gpu":       NewGPUScreen(),
 		"overclock": NewOCScreen(),
 	}
 
 	sb := NewSidebar(entries)
-	sb.SetActive("root")
+	sb.SetActive("gpu")
 
 	return &model{
 		sidebar:      sb,
 		screens:      screens,
-		activeScreen: "root",
+		activeScreen: "gpu",
 	}
 }
 

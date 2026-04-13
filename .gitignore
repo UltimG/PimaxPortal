@@ -1,7 +1,7 @@
 build/
 *.so
+!modules/gpu-drivers/turnip/vulkan.kona.so
 *.img
-!assets/firmware/boot.img
 *.zip
 *.tar
 *.7z

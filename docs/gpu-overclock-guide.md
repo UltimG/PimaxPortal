@@ -9,8 +9,8 @@ This guide walks you through manually overclocking the Adreno 650 GPU on the **P
 | 855 MHz | NOM_L1 (320) | Stock | Baseline |
 | 905 MHz | NOM_L1 (320) | Stable | ~1% |
 | 940 MHz | TURBO_L1 (416) | Stable | ~1.8% |
-| 994 MHz | TURBO_L1 (416) | Stable | ~3% |
-| 1000 MHz | TURBO_L1 (416) | Thermal throttle | Worse than 994 |
+| 985 MHz | TURBO_L1 (416) | Stable | ~2.3% |
+| 1000 MHz | TURBO_L1 (416) | Thermal throttle | Worse than 985 |
 
 **Wild Life benchmark results:**
 
@@ -18,10 +18,10 @@ This guide walks you through manually overclocking the Adreno 650 GPU on the **P
 |-------|-------|---------|
 | 855 MHz | 5564 | 33.32 |
 | 940 MHz | 5666 | 33.93 |
-| 994 MHz | 5730 | 34.31 |
+| 985 MHz | 5693 | 34.09 |
 | 1000 MHz | 5689 | 34.07 |
 
-994 MHz at TURBO_L1 is the sweet spot — highest sustained frequency without thermal throttling.
+985 MHz at TURBO_L1 is the safe sweet spot — highest sustained frequency without thermal throttling or stability risk.
 
 ---
 
@@ -97,7 +97,7 @@ Tap the **855 MHz** entry and change the frequency to your target:
 |--------|-------------------|-------------------|
 | 905 MHz | 905 | Keep NOM_L1 |
 | 940 MHz | 940 | TURBO_L1 |
-| 994 MHz | 994 | TURBO_L1 |
+| 985 MHz | 985 | TURBO_L1 |
 
 **Do not change the voltage for 905 MHz** — the XR2 silicon handles it at stock voltage. For 940+ MHz, bump to TURBO_L1.
 
@@ -115,7 +115,7 @@ After reboot, verify the new frequency via ADB:
 adb shell su -c "cat /sys/class/kgsl/kgsl-3d0/gpu_available_frequencies"
 ```
 
-The first number should be your new frequency in Hz (e.g., `994000000`).
+The first number should be your new frequency in Hz (e.g., `985000000`).
 
 ---
 
@@ -199,7 +199,7 @@ KonaBess modifies two structures:
 | 256 | NOM | 587 MHz |
 | 320 | NOM_L1 | 670–855 MHz (stock max) |
 | 384 | TURBO | ~905 MHz |
-| 416 | TURBO_L1 | 940–994 MHz |
+| 416 | TURBO_L1 | 940–985 MHz |
 | 448 | TURBO_HIGH | 1 GHz+ (silicon lottery) |
 
 ### Why the XR2 Can Clock Higher

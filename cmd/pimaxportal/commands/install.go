@@ -9,14 +9,7 @@ import (
 	"github.com/UltimG/PimaxPortal/cmd/pimaxportal/commands/adb"
 )
 
-func init() {
-	Register(&InstallCommand{})
-}
-
 type InstallCommand struct{}
-
-func (i *InstallCommand) Name() string        { return "install" }
-func (i *InstallCommand) Description() string { return "Install GPU Driver Module" }
 
 func (i *InstallCommand) Run(ctx context.Context, send func(ProgressMsg)) error {
 	cacheDir, err := CacheDir()

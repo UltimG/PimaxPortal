@@ -1,13 +1,13 @@
 # Automated Tool
 
-The `pimaxportal` TUI tool automates both **rooting** and **GPU driver upgrades** for the Pimax Portal Retro.
+The `pimaxportal` TUI tool automates **GPU driver upgrades** and **GPU overclocking** for the Pimax Portal Retro. The device must already be rooted — see the [Manual Rooting Guide](rooting-guide.md).
 
 ![pimaxportal TUI demo](img/portal.gif)
 
 ## Prerequisites
 
 - [ADB and 7z installed](dependencies.md)
-- `fastboot` in PATH (ships with android-platform-tools, required for rooting)
+- Pimax Portal Retro **already rooted with Magisk** (see [Rooting Guide](rooting-guide.md))
 - USB debugging enabled on the device
 - Pimax Portal connected via USB
 
@@ -20,26 +20,6 @@ Download the latest release for your platform from [GitHub Releases](https://git
 ```
 
 The tool opens with a sidebar menu. Use arrow keys or mouse to select a screen, Tab to switch between sidebar and content.
-
----
-
-## Rooting
-
-Select **Rooting** from the sidebar and press Enter (or click the button).
-
-The tool will:
-
-1. **Download** the latest Magisk APK from GitHub
-2. **Install** Magisk on the device via ADB
-3. **Download** the stock boot.img and push it to the device (internal storage + SD card)
-4. **Show instructions** to patch boot.img in the Magisk app
-5. **Auto-detect** the patched image when Magisk finishes
-6. **Reboot** to FastbootD and flash the patched boot image
-7. **Reboot** to Android with root active
-
-The only manual step is patching boot.img inside the Magisk app (steps shown on screen). Everything else is automated.
-
-**Important:** The Pimax Portal uses **FastbootD** (userspace fastboot) for flashing, not the UEFI bootloader. The tool handles this automatically — `fastboot flash` through the regular bootloader does not work on this device.
 
 ---
 
@@ -87,16 +67,6 @@ go build -o build/pimaxportal ./cmd/pimaxportal/
 ```
 
 ## Uninstalling
-
-### Root (Magisk)
-
-Open Magisk app on the device, tap **Uninstall** > **Complete Uninstall**. Or flash the stock boot.img via FastbootD:
-
-```bash
-adb reboot fastboot
-fastboot flash boot boot.img
-fastboot reboot
-```
 
 ### GPU Drivers
 

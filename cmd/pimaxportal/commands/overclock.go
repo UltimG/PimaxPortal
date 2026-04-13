@@ -34,7 +34,7 @@ var Presets = []OCPreset{
 	{Name: "855 MHz (Stock)", FreqHz: 855000000, Voltage: 320},
 	{Name: "905 MHz", FreqHz: 905000000, Voltage: 320},
 	{Name: "940 MHz", FreqHz: 940000000, Voltage: 416},
-	{Name: "994 MHz", FreqHz: 994000000, Voltage: 416},
+	{Name: "985 MHz", FreqHz: 985000000, Voltage: 416},
 }
 
 // DTBInfo holds the offset and size of a single DTB within a concatenated blob.

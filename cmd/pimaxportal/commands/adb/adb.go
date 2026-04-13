@@ -25,12 +25,6 @@ type DeviceInfo struct {
 	MultipleDevices bool
 }
 
-// Available returns true if the adb binary is found in PATH.
-func Available() bool {
-	_, err := exec.LookPath("adb")
-	return err == nil
-}
-
 // Devices returns the serial numbers of all connected and authorised devices.
 func Devices() ([]string, error) {
 	out, err := exec.Command("adb", "devices").CombinedOutput()
@@ -166,47 +160,6 @@ func Pull(remote, local string) error {
 		return fmt.Errorf("adb pull %s %s: %s: %w", remote, local, string(out), err)
 	}
 	return nil
-}
-
-// Install installs an APK on the connected device.
-func Install(apkPath string) error {
-	out, err := exec.Command("adb", "install", apkPath).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("adb install %s: %s: %w", apkPath, string(out), err)
-	}
-	return nil
-}
-
-// RebootFastboot reboots the device into FastbootD mode.
-func RebootFastboot() error {
-	out, err := exec.Command("adb", "reboot", "fastboot").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("adb reboot fastboot: %s: %w", string(out), err)
-	}
-	return nil
-}
-
-// HasPackage returns true if the given package is installed on the device.
-func HasPackage(pkg string) bool {
-	out, err := exec.Command("adb", "shell", "pm", "list", "packages", pkg).CombinedOutput()
-	if err != nil {
-		return false
-	}
-	return strings.Contains(string(out), "package:"+pkg)
-}
-
-// FindFile runs `ls <pattern>` on the device and returns the first matching
-// path. Returns an error if no match is found.
-func FindFile(pattern string) (string, error) {
-	out, err := exec.Command("adb", "shell", "ls", pattern, "2>/dev/null").CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("adb shell ls %s: %w", pattern, err)
-	}
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
-	if len(lines) == 0 || lines[0] == "" {
-		return "", fmt.Errorf("no file found matching %s", pattern)
-	}
-	return lines[0], nil
 }
 
 // GetDeviceInfo collects comprehensive information about the connected device.
