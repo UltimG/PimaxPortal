@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
@@ -10,14 +9,13 @@ import (
 	"github.com/UltimG/PimaxPortal/cmd/pimaxportal/commands/adb"
 	"github.com/UltimG/PimaxPortal/cmd/pimaxportal/ui"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // GPU screen states
 type gpuState int
 
 const (
-	gpuIdle         gpuState = iota
+	gpuIdle gpuState = iota
 	gpuRunning
 	gpuRootWait
 	gpuRebootPrompt
@@ -25,7 +23,8 @@ const (
 	gpuDone
 )
 
-// GPU-specific message types to avoid conflicts with other screens.
+// GPU-specific message types to avoid cross-screen message delivery when
+// the user switches tabs mid-pipeline.
 type gpuProgressMsg commands.ProgressMsg
 type gpuPipelineDoneMsg struct{ err error }
 type gpuDeviceTickMsg struct{}
@@ -34,45 +33,25 @@ type gpuSpinTickMsg struct{}
 // GPUScreen implements the Screen interface for the GPU driver
 // build-and-install pipeline.
 type GPUScreen struct {
-	state      gpuState
-	device     adb.DeviceInfo
-	log        ui.ProgressLog
-	program    *tea.Program
-	cancel     context.CancelFunc
-	spinnerIdx int
-	spinnerDir int     // +1 forward, -1 backward (bounce)
-	statusLine string  // current pipeline step text
-	statusPct  float64 // current progress 0.0-1.0, -1 for indeterminate
-	errorMsg   string  // error to show in popup
-	buttonRow  int     // Y position of button for mouse click detection
+	baseScreen
+	state gpuState
 }
 
 // NewGPUScreen creates a new GPUScreen with an initial device poll.
 func NewGPUScreen() *GPUScreen {
 	info, _ := adb.GetDeviceInfo()
-	return &GPUScreen{
-		state:      gpuIdle,
-		device:     info,
-		spinnerDir: 1,
-		statusPct:  -1,
-	}
-}
-
-// SetProgram provides the tea.Program reference needed for goroutine
-// communication (sending messages from pipeline goroutines).
-func (s *GPUScreen) SetProgram(p *tea.Program) {
-	s.program = p
+	s := &GPUScreen{state: gpuIdle}
+	s.device = info
+	s.spinnerDir = 1
+	s.statusPct = -1
+	return s
 }
 
 // Key returns the unique identifier for this screen.
-func (s *GPUScreen) Key() string {
-	return "gpu"
-}
+func (s *GPUScreen) Key() string { return "gpu" }
 
 // Title returns the display title shown in the sidebar.
-func (s *GPUScreen) Title() string {
-	return "GPU Drivers"
-}
+func (s *GPUScreen) Title() string { return "GPU Drivers" }
 
 // Init starts the device polling ticker.
 func (s *GPUScreen) Init() tea.Cmd {
@@ -82,6 +61,12 @@ func (s *GPUScreen) Init() tea.Cmd {
 func (s *GPUScreen) tickDevice() tea.Cmd {
 	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
 		return gpuDeviceTickMsg{}
+	})
+}
+
+func (s *GPUScreen) spinTick() tea.Cmd {
+	return tea.Tick(spinnerInterval, func(t time.Time) tea.Msg {
+		return gpuSpinTickMsg{}
 	})
 }
 
@@ -175,13 +160,10 @@ func (s *GPUScreen) handleKey(msg tea.KeyMsg) (Screen, tea.Cmd) {
 	case gpuRebootPrompt:
 		switch key {
 		case "y":
-			s.log.Add(ui.ProgressStyle.Render("Rebooting device..."))
 			s.state = gpuDone
-			_ = adb.Reboot()
-			s.log.Add(ui.SuccessStyle.Render("Reboot command sent. Device will restart."))
-			return s, tea.Quit
+			return s, s.handleRebootYes()
 		case "n":
-			s.log.Add(ui.SuccessStyle.Render("Skipped reboot. Reboot manually to apply changes."))
+			s.handleRebootNo()
 			s.state = gpuDone
 			return s, tea.Quit
 		}
@@ -212,7 +194,9 @@ func (s *GPUScreen) handleProgress(msg commands.ProgressMsg) (Screen, tea.Cmd) {
 		return s, nil
 
 	case "ROOT_CHECK_TIMEOUT":
-		s.showError("Root access timed out.\nPlease try again.")
+		s.errorMsg = "Root access timed out.\nPlease try again."
+		s.statusLine = ""
+		s.state = gpuError
 		return s, nil
 
 	case "INSTALL_COMPLETE":
@@ -221,56 +205,30 @@ func (s *GPUScreen) handleProgress(msg commands.ProgressMsg) (Screen, tea.Cmd) {
 		return s, nil
 
 	default:
-		if msg.Percent == 1.0 {
-			// Step completed — move to log only if different from last logged line
-			entry := ui.SuccessStyle.Render("■") + " " + ui.ProgressStyle.Render(msg.Text)
-			if len(s.log.Lines) == 0 || s.log.Lines[len(s.log.Lines)-1] != entry {
-				s.log.Add(entry)
-			}
-			s.statusLine = ""
-			s.statusPct = -1
-		} else {
-			// Ongoing — update the live status line (not logged)
-			s.statusLine = msg.Text
-			s.statusPct = msg.Percent
-		}
+		s.applyProgress(msg)
 		return s, nil
 	}
 }
 
 func (s *GPUScreen) handlePipelineDone(msg gpuPipelineDoneMsg) (Screen, tea.Cmd) {
-	s.statusLine = ""
-	s.statusPct = -1
-	if msg.err != nil {
-		// Suppress context canceled anywhere in the error chain (user-initiated cancel)
-		if errors.Is(msg.err, context.Canceled) {
-			s.state = gpuIdle
-			return s, nil
-		}
-		s.errorMsg = shortenError(msg.err)
-		s.state = gpuError
-		return s, nil
-	}
-	if s.state != gpuRebootPrompt {
+	canceled, errored := s.finalizePipeline(msg.err)
+	switch {
+	case canceled:
 		s.state = gpuIdle
+	case errored:
+		s.state = gpuError
+	default:
+		if s.state != gpuRebootPrompt {
+			s.state = gpuIdle
+		}
 	}
 	return s, nil
-}
-
-func (s *GPUScreen) showError(msg string) {
-	s.errorMsg = msg
-	s.state = gpuError
-	s.statusLine = ""
 }
 
 // startPipeline launches the build+install pipeline in a goroutine.
 func (s *GPUScreen) startPipeline() tea.Cmd {
 	s.state = gpuRunning
-	s.log.Clear()
-	s.statusLine = ""
-	s.statusPct = -1
-	s.spinnerIdx = 0
-	s.spinnerDir = 1
+	s.resetForRun()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
@@ -321,65 +279,21 @@ func (s *GPUScreen) startPipeline() tea.Cmd {
 	return tea.Batch(pipelineCmd, s.spinTick())
 }
 
-// Spinner
-
-func (s *GPUScreen) advanceSpinner() {
-	s.spinnerIdx += s.spinnerDir
-	if s.spinnerIdx >= len(spinnerFrames)-1 {
-		s.spinnerDir = -1
-	} else if s.spinnerIdx <= 0 {
-		s.spinnerDir = 1
-	}
-}
-
-func (s *GPUScreen) spinnerFrame() string {
-	idx := s.spinnerIdx
-	if idx < 0 {
-		idx = 0
-	}
-	if idx >= len(spinnerFrames) {
-		idx = len(spinnerFrames) - 1
-	}
-	return spinnerFrames[idx]
-}
-
-func (s *GPUScreen) spinTick() tea.Cmd {
-	return tea.Tick(spinnerInterval, func(t time.Time) tea.Msg {
-		return gpuSpinTickMsg{}
-	})
-}
-
 // View renders the GPU screen content within the given dimensions.
 func (s *GPUScreen) View(width, height int) string {
 	var b strings.Builder
+	w := clampContentWidth(width)
 
-	// Use the smaller of provided width and contentWidth for layout
-	w := contentWidth
-	if width > 0 && width < w {
-		w = width
-	}
+	// 1. Header (logo + device info)
+	header, headerLines := s.renderHeader(w)
+	b.WriteString(header)
+	s.buttonRow = headerLines
 
-	// 1. Logo (centered)
-	art := center(ui.TitleStyle.Render(ui.LogoArt))
-	subtitle := center(ui.TitleStyle.Render(ui.LogoSubtitle))
-	logo := art + "\n" + subtitle
-	b.WriteString(logo)
-	b.WriteString("\n\n")
-
-	// 2. Device info (left-aligned)
-	deviceInfo := ui.RenderDeviceInfo(s.device, w)
-	b.WriteString(deviceInfo)
-	b.WriteString("\n\n")
-
-	// Track button row for mouse click detection
-	linesSoFar := 2 + strings.Count(logo, "\n") + 1 + strings.Count(deviceInfo, "\n") + 1
-	s.buttonRow = linesSoFar
-
-	// 3. Action button (centered)
+	// 2. Action button (centered)
 	b.WriteString(center(s.renderButton()))
 	b.WriteString("\n")
 
-	// 4. Overlays
+	// 3. Overlays
 	if s.state == gpuRootWait {
 		b.WriteString("\n")
 		b.WriteString(s.renderRootWaitOverlay())
@@ -391,22 +305,17 @@ func (s *GPUScreen) View(width, height int) string {
 		b.WriteString("\n")
 	}
 
-	// 5. Separator
+	// 4. Separator
 	b.WriteString("\n" + ui.SeparatorStyle.Render(strings.Repeat("─", w)) + "\n")
 
-	// 6. Progress log + live status
+	// 5. Progress log + live status
 	logContent := s.log.Render()
 	if logContent != "" {
 		b.WriteString("\n")
 		b.WriteString(logContent)
 	}
-	if s.statusLine != "" && (s.state == gpuRunning || s.state == gpuRootWait) {
-		b.WriteString("\n")
-		b.WriteString(ui.ProgressStyle.Render(s.statusLine))
-		if s.statusPct >= 0 && s.statusPct < 1.0 {
-			b.WriteString("\n")
-			b.WriteString(renderProgressBar(s.statusPct, w))
-		}
+	if s.state == gpuRunning || s.state == gpuRootWait {
+		b.WriteString(s.renderStatusLine(w))
 	}
 	b.WriteString("\n")
 
@@ -454,13 +363,6 @@ func (s *GPUScreen) renderButton() string {
 	return ""
 }
 
-func (s *GPUScreen) renderErrorPopup() string {
-	wrapped := wordWrap(s.errorMsg, 36)
-	body := lipgloss.PlaceHorizontal(36, lipgloss.Center, wrapped)
-	popup := ui.BoxStyle.Render("\n" + body + "\n")
-	return lipgloss.PlaceHorizontal(innerWidth(), lipgloss.Center, popup)
-}
-
 func (s *GPUScreen) renderRootWaitOverlay() string {
 	frame := s.spinnerFrame()
 
@@ -483,5 +385,6 @@ func (s *GPUScreen) renderRootWaitOverlay() string {
 	return ui.BoxStyle.Render(ui.TitleStyle.Render("Root Access Required") + content)
 }
 
-// Compile-time check that GPUScreen implements Screen.
+// Compile-time checks.
 var _ Screen = (*GPUScreen)(nil)
+var _ ProgramSetter = (*GPUScreen)(nil)

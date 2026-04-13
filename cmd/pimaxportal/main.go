@@ -13,13 +13,8 @@ func main() {
 
 	// Pass program reference to screens that need it for goroutine communication
 	for _, s := range m.screens {
-		switch screen := s.(type) {
-		case *GPUScreen:
-			screen.SetProgram(p)
-		case *RootScreen:
-			screen.SetProgram(p)
-		case *OCScreen:
-			screen.SetProgram(p)
+		if ps, ok := s.(ProgramSetter); ok {
+			ps.SetProgram(p)
 		}
 	}
 

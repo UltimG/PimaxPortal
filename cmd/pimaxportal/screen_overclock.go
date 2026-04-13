@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,21 +10,21 @@ import (
 	"github.com/UltimG/PimaxPortal/cmd/pimaxportal/commands/adb"
 	"github.com/UltimG/PimaxPortal/cmd/pimaxportal/ui"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // Overclock screen states
 type ocState int
 
 const (
-	ocIdle         ocState = iota
+	ocIdle ocState = iota
 	ocRunning
 	ocRebootPrompt
 	ocError
 	ocDone
 )
 
-// Overclock-specific message types to avoid conflicts with other screens.
+// Overclock-specific message types to avoid cross-screen message delivery
+// when the user switches tabs mid-pipeline.
 type ocProgressMsg commands.ProgressMsg
 type ocPipelineDoneMsg struct{ err error }
 type ocDeviceTickMsg struct{}
@@ -33,31 +32,19 @@ type ocSpinTickMsg struct{}
 
 // OCScreen implements the Screen interface for the GPU overclock flow.
 type OCScreen struct {
-	state      ocState
-	device     adb.DeviceInfo
-	log        ui.ProgressLog
-	program    *tea.Program
-	cancel     context.CancelFunc
-	spinnerIdx int
-	spinnerDir int     // +1 forward, -1 backward (bounce)
-	statusLine string  // current pipeline step text
-	statusPct  float64 // current progress 0.0-1.0, -1 for indeterminate
-	errorMsg   string  // error to show in popup
-	buttonRow  int     // Y position of button for mouse click detection
-
-	cursor    int    // selected preset index
-	activeHz  uint32 // current GPU frequency read from sysfs (0 if unknown)
+	baseScreen
+	state    ocState
+	cursor   int    // selected preset index
+	activeHz uint32 // current GPU frequency read from sysfs (0 if unknown)
 }
 
 // NewOCScreen creates a new OCScreen with an initial device poll.
 func NewOCScreen() *OCScreen {
 	info, _ := adb.GetDeviceInfo()
-	s := &OCScreen{
-		state:      ocIdle,
-		device:     info,
-		spinnerDir: 1,
-		statusPct:  -1,
-	}
+	s := &OCScreen{state: ocIdle}
+	s.device = info
+	s.spinnerDir = 1
+	s.statusPct = -1
 	s.refreshFreq()
 	return s
 }
@@ -74,21 +61,11 @@ func (s *OCScreen) refreshFreq() {
 	}
 }
 
-// SetProgram provides the tea.Program reference needed for goroutine
-// communication (sending messages from pipeline goroutines).
-func (s *OCScreen) SetProgram(p *tea.Program) {
-	s.program = p
-}
-
 // Key returns the unique identifier for this screen.
-func (s *OCScreen) Key() string {
-	return "overclock"
-}
+func (s *OCScreen) Key() string { return "overclock" }
 
 // Title returns the display title shown in the sidebar.
-func (s *OCScreen) Title() string {
-	return "GPU Overclock"
-}
+func (s *OCScreen) Title() string { return "GPU Overclock" }
 
 // Init starts the device polling ticker.
 func (s *OCScreen) Init() tea.Cmd {
@@ -98,6 +75,12 @@ func (s *OCScreen) Init() tea.Cmd {
 func (s *OCScreen) tickDevice() tea.Cmd {
 	return tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
 		return ocDeviceTickMsg{}
+	})
+}
+
+func (s *OCScreen) spinTick() tea.Cmd {
+	return tea.Tick(spinnerInterval, func(t time.Time) tea.Msg {
+		return ocSpinTickMsg{}
 	})
 }
 
@@ -138,7 +121,8 @@ func (s *OCScreen) Update(msg tea.Msg) (Screen, tea.Cmd) {
 		return s, s.tickDevice()
 
 	case ocProgressMsg:
-		return s.handleProgress(commands.ProgressMsg(msg))
+		s.applyProgress(commands.ProgressMsg(msg))
+		return s, nil
 
 	case ocPipelineDoneMsg:
 		return s.handlePipelineDone(msg)
@@ -191,13 +175,10 @@ func (s *OCScreen) handleKey(msg tea.KeyMsg) (Screen, tea.Cmd) {
 	case ocRebootPrompt:
 		switch key {
 		case "y":
-			s.log.Add(ui.ProgressStyle.Render("Rebooting device..."))
 			s.state = ocDone
-			_ = adb.Reboot()
-			s.log.Add(ui.SuccessStyle.Render("Reboot command sent. Device will restart."))
-			return s, tea.Quit
+			return s, s.handleRebootYes()
 		case "n":
-			s.log.Add(ui.SuccessStyle.Render("Skipped reboot. Reboot manually to apply changes."))
+			s.handleRebootNo()
 			s.state = ocDone
 			return s, nil
 		}
@@ -217,47 +198,20 @@ func (s *OCScreen) handleKey(msg tea.KeyMsg) (Screen, tea.Cmd) {
 	return s, nil
 }
 
-func (s *OCScreen) handleProgress(msg commands.ProgressMsg) (Screen, tea.Cmd) {
-	if msg.Percent == 1.0 {
-		// Step completed — move to log only if different from last logged line
-		entry := ui.SuccessStyle.Render("■") + " " + ui.ProgressStyle.Render(msg.Text)
-		if len(s.log.Lines) == 0 || s.log.Lines[len(s.log.Lines)-1] != entry {
-			s.log.Add(entry)
-		}
-		s.statusLine = ""
-		s.statusPct = -1
-	} else {
-		// Ongoing — update the live status line (not logged)
-		s.statusLine = msg.Text
-		s.statusPct = msg.Percent
-	}
-	return s, nil
-}
-
 func (s *OCScreen) handlePipelineDone(msg ocPipelineDoneMsg) (Screen, tea.Cmd) {
-	s.statusLine = ""
-	s.statusPct = -1
-	if msg.err != nil {
-		// Suppress context canceled anywhere in the error chain (user-initiated cancel)
-		if errors.Is(msg.err, context.Canceled) {
-			s.state = ocIdle
-			return s, nil
-		}
-		s.errorMsg = shortenError(msg.err)
+	canceled, errored := s.finalizePipeline(msg.err)
+	switch {
+	case canceled:
+		s.state = ocIdle
+	case errored:
 		s.state = ocError
-		return s, nil
-	}
-	if s.state != ocRebootPrompt {
-		s.state = ocRebootPrompt
-		s.log.Add(ui.SuccessStyle.Render("Operation complete!"))
+	default:
+		if s.state != ocRebootPrompt {
+			s.state = ocRebootPrompt
+			s.log.Add(ui.SuccessStyle.Render("Operation complete!"))
+		}
 	}
 	return s, nil
-}
-
-func (s *OCScreen) showError(msg string) {
-	s.errorMsg = msg
-	s.state = ocError
-	s.statusLine = ""
 }
 
 // selectedPreset returns the currently cursor-selected preset.
@@ -289,11 +243,7 @@ func (s *OCScreen) startPipeline() tea.Cmd {
 	}
 
 	s.state = ocRunning
-	s.log.Clear()
-	s.statusLine = ""
-	s.statusPct = -1
-	s.spinnerIdx = 0
-	s.spinnerDir = 1
+	s.resetForRun()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancel = cancel
@@ -324,92 +274,45 @@ func (s *OCScreen) startPipeline() tea.Cmd {
 	return tea.Batch(pipelineCmd, s.spinTick())
 }
 
-// Spinner
-
-func (s *OCScreen) advanceSpinner() {
-	s.spinnerIdx += s.spinnerDir
-	if s.spinnerIdx >= len(spinnerFrames)-1 {
-		s.spinnerDir = -1
-	} else if s.spinnerIdx <= 0 {
-		s.spinnerDir = 1
-	}
-}
-
-func (s *OCScreen) spinnerFrame() string {
-	idx := s.spinnerIdx
-	if idx < 0 {
-		idx = 0
-	}
-	if idx >= len(spinnerFrames) {
-		idx = len(spinnerFrames) - 1
-	}
-	return spinnerFrames[idx]
-}
-
-func (s *OCScreen) spinTick() tea.Cmd {
-	return tea.Tick(spinnerInterval, func(t time.Time) tea.Msg {
-		return ocSpinTickMsg{}
-	})
-}
-
 // View renders the overclock screen content within the given dimensions.
 func (s *OCScreen) View(width, height int) string {
 	var b strings.Builder
+	w := clampContentWidth(width)
 
-	// Use the smaller of provided width and contentWidth for layout
-	w := contentWidth
-	if width > 0 && width < w {
-		w = width
-	}
+	// 1. Header (logo + device info)
+	header, headerLines := s.renderHeader(w)
+	b.WriteString(header)
 
-	// 1. Logo (centered)
-	art := center(ui.TitleStyle.Render(ui.LogoArt))
-	subtitle := center(ui.TitleStyle.Render(ui.LogoSubtitle))
-	logo := art + "\n" + subtitle
-	b.WriteString(logo)
-	b.WriteString("\n\n")
-
-	// 2. Device info (left-aligned)
-	deviceInfo := ui.RenderDeviceInfo(s.device, w)
-	b.WriteString(deviceInfo)
-	b.WriteString("\n\n")
-
-	// 3. Preset selector (tree-style)
-	b.WriteString(s.renderPresetSelector())
+	// 2. Preset selector (tree-style)
+	selector := s.renderPresetSelector()
+	b.WriteString(selector)
 	b.WriteString("\n\n")
 
 	// Track button row for mouse click detection
-	linesSoFar := 2 + strings.Count(logo, "\n") + 1 + strings.Count(deviceInfo, "\n") + 1 +
-		strings.Count(s.renderPresetSelector(), "\n") + 2
-	s.buttonRow = linesSoFar
+	s.buttonRow = headerLines + strings.Count(selector, "\n") + 2
 
-	// 4. Action button (centered)
+	// 3. Action button (centered)
 	b.WriteString(center(s.renderButton()))
 	b.WriteString("\n")
 
-	// 5. Error popup if in error state
+	// 4. Error popup if in error state
 	if s.state == ocError {
 		b.WriteString("\n")
 		b.WriteString(s.renderErrorPopup())
 		b.WriteString("\n")
 	}
 
-	// 6. Separator
+	// 5. Separator
 	b.WriteString("\n" + ui.SeparatorStyle.Render(strings.Repeat("─", w)) + "\n")
 
-	// 7. Progress log + live status line + progress bar
+	// 6. Progress log + live status line + progress bar
 	logContent := s.log.Render()
 	if logContent != "" {
 		b.WriteString("\n")
 		b.WriteString(logContent)
 	}
-	if s.statusLine != "" && s.state == ocRunning {
-		b.WriteString("\n")
-		b.WriteString(ui.ProgressStyle.Render(s.statusLine))
-		if s.statusPct >= 0 && s.statusPct < 1.0 {
-			b.WriteString("\n")
-			b.WriteString(renderProgressBar(s.statusPct, w))
-		}
+	if s.state == ocRunning {
+		b.WriteString(s.renderStatusLine(w))
 	}
 	b.WriteString("\n")
 
@@ -500,14 +403,6 @@ func (s *OCScreen) FooterHelp() string {
 	}
 }
 
-// Rendering helpers
-
-func (s *OCScreen) renderErrorPopup() string {
-	wrapped := wordWrap(s.errorMsg, 36)
-	body := lipgloss.PlaceHorizontal(36, lipgloss.Center, wrapped)
-	popup := ui.BoxStyle.Render("\n" + body + "\n")
-	return lipgloss.PlaceHorizontal(innerWidth(), lipgloss.Center, popup)
-}
-
-// Compile-time check that OCScreen implements Screen.
+// Compile-time checks.
 var _ Screen = (*OCScreen)(nil)
+var _ ProgramSetter = (*OCScreen)(nil)

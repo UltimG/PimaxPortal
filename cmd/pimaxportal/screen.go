@@ -19,3 +19,10 @@ type Screen interface {
 	// FooterHelp returns the footer key hints for the current state.
 	FooterHelp() string
 }
+
+// ProgramSetter is implemented by screens that need a reference to the
+// tea.Program in order to push messages from background goroutines.
+// main() passes the program to every screen that implements it.
+type ProgramSetter interface {
+	SetProgram(*tea.Program)
+}
